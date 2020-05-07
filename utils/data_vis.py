@@ -1,8 +1,9 @@
 import matplotlib.pyplot as plt
 from numba import jit
-
+import os
+from globals import RUN_NAME
 #@jit
-def plot_img_and_mask(img, mask, mask2, filename):
+def plot_img_and_mask(img, mask, mask2, filename ):
 
     fig = plt.figure()
     a = fig.add_subplot(1, 3, 1)
@@ -21,5 +22,7 @@ def plot_img_and_mask(img, mask, mask2, filename):
     # fig.set_canvas(plt.gcf().canvas)
 
     # plt.show()
-    plt.savefig('/home/d/Pytorch-UNet/train_plots/'+filename+'.png')
+    dir = f'/home/d/Pytorch-UNet/train_plots{RUN_NAME}/'
+    os.makedirs(dir, exist_ok=True)
+    plt.savefig(dir+filename+'.png')
     plt.close()

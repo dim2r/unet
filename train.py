@@ -17,7 +17,10 @@ from eval import eval_net
 from unet import UNet
 from utils import get_ids, split_ids, split_train_val, get_imgs_and_masks, batch, print2
 from PIL import Image
+from globals import RUN_NAME
 N_CHANNELS=3
+
+
 # import utils
 def train_net(net,
               epochs=5,
@@ -42,7 +45,7 @@ def train_net(net,
     ddd = "/home/d/_Denis/"
     dir_img = ddd + 'train/'
     dir_mask = ddd + 'train_mask/'
-    dir_checkpoint = 'checkpoints/'
+    dir_checkpoint = f'checkpoints{RUN_NAME}/'
 
     dir_img = '/home/d/train_data_polygon/'
     # dir_img = '/home/d/Pytorch-UNet/train_test_data'
@@ -158,6 +161,7 @@ def train_net(net,
             print2(f'epoch={diff1} seconds, validation={diff2} seconds, total={diff3} seconds')
 
         if save_cp:
+            os.makedirs(dir_checkpoint, exist_ok=True)
             torch.save(net.state_dict(),
                        dir_checkpoint + 'CP{}.pth'.format(epoch + 1))
             print2('Checkpoint {} saved !'.format(epoch + 1))
@@ -217,7 +221,7 @@ if __name__ == '__main__':
                   lr=args.lr,
                   gpu=args.gpu,
                   img_scale=args.scale,
-                  val_percent=0.2
+                  val_percent=0.1
                   )
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
