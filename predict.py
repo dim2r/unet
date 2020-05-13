@@ -17,8 +17,8 @@ def predict_img(net,
                 full_img,
                 scale_factor=0.5,
                 out_threshold=0.5,
-                use_dense_crf=True,
-                use_gpu=False):
+                use_dense_crf=False,
+                use_gpu=True):
 
     net.eval()
     img_height = full_img.size[1]
@@ -26,7 +26,7 @@ def predict_img(net,
 
     img = resize_and_crop(full_img, scale=scale_factor)
     img = normalize(img)
-
+    img = np.stack((img, img, img), axis=2)
     left_square, right_square = split_img_into_squares(img)
 
     left_square = hwc_to_chw(left_square)
@@ -126,22 +126,27 @@ def mask_to_image(mask):
     return Image.fromarray((mask * 255).astype(np.uint8))
 
 if __name__ == "__main__":
-    args = get_args()
-    in_files = args.input
-    in_masks = args.xxx
-    out_files = get_output_filenames(args)
+    # args = get_args()
+    f='/home/d/train_data_polygon/MarkSet1_original/set1/abdomen/1/1.2.392.200036.9116.2.6.1.48.1214242851.1571977503.267444'
+    # in_files = args.input
+    # in_masks = args.xxx
+    # out_files = get_output_filenames(args)
 
+    in_files = [f+'.png']
+    in_masks = [f+'.gif']
+    out_files = ['out.gif'] #get_output_filenames(args)
+    in_model = '/home/d/Pytorch-UNet/checkpoints3/CP20.pth'
     net = UNet(n_channels=3, n_classes=1)
 
-    print("Loading model {}".format(args.model))
+    print("Loading model {}".format(in_model))
 
-    if not args.cpu:
+    if torch.cuda.is_available():
         print("Using CUDA version of the net, prepare your GPU !")
         net.cuda()
-        net.load_state_dict(torch.load(args.model))
+        net.load_state_dict(torch.load(in_model))
     else:
         net.cpu()
-        net.load_state_dict(torch.load(args.model, map_location='cpu'))
+        net.load_state_dict(torch.load(in_model, map_location='cpu'))
         print("Using CPU version of the net, this may be very slow")
 
     print("Model loaded !")
@@ -157,13 +162,13 @@ if __name__ == "__main__":
 
         mask = predict_img(net=net,
                            full_img=img,
-                           scale_factor=args.scale,
-                           out_threshold=args.mask_threshold,
-                           use_dense_crf= not args.no_crf,
-                           use_gpu=not args.cpu)
+                           scale_factor=0.5,
+                           out_threshold=0.5,
+                           use_dense_crf= False,
+                           use_gpu=True)
 
 
-        if args.viz:
+        if False:
             #python3 predict.py --model checkpoints/CP7.pth -i perc_train/aaghewgysa.jpg -o 1.jpg --xxx perc_train_mask/aaghewgysa_mask.gif -v
             if len(in_masks) > 0:
                 img_mask = Image.open(in_masks[0])
@@ -171,8 +176,22 @@ if __name__ == "__main__":
             print("Visualizing results for image {}, close to continue ...".format(fn))
             plot_img_and_mask(img, mask, img_mask,'../predict_plot.jpg')
 
-        if not args.no_save:
+        if True:
             out_fn = out_files[i]
+
+            min_x_pos=10000
+            max_x_pos=-10000
+            for x in range(len(mask)):
+                cnt=0
+                for y in range(len(mask[x])):
+                    if mask[x][y]==False:
+                        cnt+=1
+                if cnt>0 and x<min_x_pos:
+                    min_x_pos=x
+                if cnt>0 and x>max_x_pos:
+                    max_x_pos=x
+            size=max_x_pos-min_x_pos
+            print(f'size={size} at min_x_pos={min_x_pos} ... max_x_pos={max_x_pos}')
             result = mask_to_image(mask)
             result.save(out_files[i])
 
