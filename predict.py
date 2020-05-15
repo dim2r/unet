@@ -1,6 +1,6 @@
 import argparse
 import os
-
+import pydicom as dicom
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -10,8 +10,13 @@ from PIL import Image
 from unet import UNet
 from utils import resize_and_crop, normalize, split_img_into_squares, hwc_to_chw, merge_masks, dense_crf
 from utils import plot_img_and_mask
+import math
 
 from torchvision import transforms
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN
+
 
 def predict_img(net,
                 full_img,
@@ -127,7 +132,10 @@ def mask_to_image(mask):
 
 if __name__ == "__main__":
     # args = get_args()
-    f='/home/d/train_data_polygon/MarkSet1_original/set1/abdomen/1/1.2.392.200036.9116.2.6.1.48.1214242851.1571977503.267444'
+    # f='/home/d/train_data_polygon/MarkSet1_original/set1/abdomen/1/1.2.392.200036.9116.2.6.1.48.1214242851.1571977503.267444'
+    f='/home/d/train_data_polygon/MarkSet1_original/set1/chest/1-50/49/1.2.392.200036.9116.2.6.1.48.1214242851.1571826533.534693'
+    #2 spots
+    # f='/home/d/train_data_polygon/MarkSet1_original/set1/patalogy/calcium/49/1.2.392.200036.9116.2.6.1.48.1214242851.1571915481.25008'
     # in_files = args.input
     # in_masks = args.xxx
     # out_files = get_output_filenames(args)
@@ -136,63 +144,91 @@ if __name__ == "__main__":
     in_masks = [f+'.gif']
     out_files = ['out.gif'] #get_output_filenames(args)
     in_model = '/home/d/Pytorch-UNet/checkpoints3/CP20.pth'
+
+    rootdir = '/meida/';
+    rootdir = '/home/d/test_data';
+
     net = UNet(n_channels=3, n_classes=1)
 
-    print("Loading model {}".format(in_model))
+    print(f"Loading model {in_model}...")
+
 
     if torch.cuda.is_available():
-        print("Using CUDA version of the net, prepare your GPU !")
+        print("Using CUDA !")
         net.cuda()
         net.load_state_dict(torch.load(in_model))
+        use_cuda = True
     else:
         net.cpu()
         net.load_state_dict(torch.load(in_model, map_location='cpu'))
-        print("Using CPU version of the net, this may be very slow")
+        use_cuda = False
+        print("Using CPU, this may be very slow.....")
 
-    print("Model loaded !")
+    print("Model loaded")
+    i=0
+    for currentDir, subdirs, files in os.walk(rootdir):
+        for f in files:
+            if f.find('.dcm') > -1:
+                fn = currentDir + '/' + f
+                ds = dicom.dcmread(fn)
+                pixel_array_numpy = ds.pixel_array
+                pixel_array_numpy += 2048
+                pixel_array_numpy <<= 3
+                pixel_array_numpy = pixel_array_numpy.astype(np.uint32)
 
-    for i, fn in enumerate(in_files):
-        print("\nPredicting image {} ...".format(fn))
+                # img = Image.open(fn)
+                img = Image.fromarray(pixel_array_numpy)
+                if img.size[0] < img.size[1]:
+                    print("Error: image height larger than the width")
 
-        img = Image.open(fn)
+                mask = predict_img(net=net,
+                                   full_img=img,
+                                   scale_factor=0.5,
+                                   out_threshold=0.5,
+                                   use_dense_crf= False,
+                                   use_gpu=use_cuda)
+                have_an_object=False
+                if True:
+                    scatter_data=[]
+                    for x in range(len(mask)):
+                        for y in range(len(mask[x])):
+                            if mask[x][y]==False:
+                                scatter_data.append([x,y])
 
+                    if len(scatter_data):
+                        try:
+                            pca = PCA(2)
+                            pca.fit(scatter_data)
+                            transformed_normalized = pca.transform(scatter_data)
+                            min_x = None
+                            max__X = None
+                            min_y = None
+                            max__Y = None
+                            for k in range(len(transformed_normalized)):
+                                x=transformed_normalized[k][0]
+                                y=transformed_normalized[k][1]
+                                if min_x is None or min_x>x:
+                                    min_x=x
+                                if min_y is None or min_y>y:
+                                    min_y=y
+                                if max__X is None or max__X<x:
+                                    max__X=x
+                                if max__Y is None or max__Y<y:
+                                    max__Y=y
+                            sz1=max__X - min_x
+                            sz2=max__Y - min_y
 
-        if img.size[0] < img.size[1]:
-            print("Error: image height larger than the width")
+                            db = DBSCAN(eps=2, min_samples=5).fit(scatter_data)
+                            labels = db.labels_
+                            n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+                            sz1=int(round(sz1))
+                            sz2=int(round(sz2))
+                            have_an_object=True
+                            print(f'n_clusters={n_clusters_};size1={sz1};size2={sz2};{fn}')
+                        except Exception as e:
+                            print(str(e))
 
-        mask = predict_img(net=net,
-                           full_img=img,
-                           scale_factor=0.5,
-                           out_threshold=0.5,
-                           use_dense_crf= False,
-                           use_gpu=True)
-
-
-        if False:
-            #python3 predict.py --model checkpoints/CP7.pth -i perc_train/aaghewgysa.jpg -o 1.jpg --xxx perc_train_mask/aaghewgysa_mask.gif -v
-            if len(in_masks) > 0:
-                img_mask = Image.open(in_masks[0])
-
-            print("Visualizing results for image {}, close to continue ...".format(fn))
-            plot_img_and_mask(img, mask, img_mask,'../predict_plot.jpg')
-
-        if True:
-            out_fn = out_files[i]
-
-            min_x_pos=10000
-            max_x_pos=-10000
-            for x in range(len(mask)):
-                cnt=0
-                for y in range(len(mask[x])):
-                    if mask[x][y]==False:
-                        cnt+=1
-                if cnt>0 and x<min_x_pos:
-                    min_x_pos=x
-                if cnt>0 and x>max_x_pos:
-                    max_x_pos=x
-            size=max_x_pos-min_x_pos
-            print(f'size={size} at min_x_pos={min_x_pos} ... max_x_pos={max_x_pos}')
-            result = mask_to_image(mask)
-            result.save(out_files[i])
-
-            print("Mask saved to {}".format(out_files[i]))
+                if have_an_object:
+                    result = mask_to_image(mask)
+                    out_fn = fn.replace('.dcm','.gif')
+                    result.save(out_fn)
