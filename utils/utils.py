@@ -40,7 +40,7 @@ def resize_and_crop(pilimg, scale=0.5, final_height=None):
     #DR fix rotation
     w = img.size[0]
     h = img.size[1]
-    img = img.crop((int(w*0.15), int(h*0.2), int(w*0.85), int(h*0.95)))
+    img = img.crop((int(w*0.10), int(h*0.10), int(w*0.90), int(h*0.90)))
     #END DR
     # img.show()
     # time.sleep(15)

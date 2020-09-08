@@ -16,6 +16,8 @@ def eval_net(net, dataset, gpu=False,epoch=None, ids=None):
         if ids:
             filename=ids[i][0]
             filename=filename.replace('/','_')
+            filename=filename.replace('\\','_')
+            filename=filename.replace(':','_')
 
         img = torch.from_numpy(img).unsqueeze(0)
         true_mask = torch.from_numpy(true_mask).unsqueeze(0)
@@ -32,7 +34,11 @@ def eval_net(net, dataset, gpu=False,epoch=None, ids=None):
             last_true_masks = true_mask[0].data.cpu().numpy()
             last_true_masks *= 255
             img_last_masks_pred = Image.fromarray(last_masks_pred)
-            img_last_img = Image.fromarray(last_img)
+
+            min_ = last_img.min()
+            max_ = last_img.max()
+            img_last_img = Image.fromarray(255 * (last_img - min_) / (max_ - min_))
+
             img_last_true_masks = Image.fromarray(last_true_masks)
 
 
